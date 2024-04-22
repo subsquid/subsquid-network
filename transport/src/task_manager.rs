@@ -14,7 +14,7 @@ pub const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 pub struct TaskManager {
     shutdown_timeout: Duration,
     cancel_token: CancellationToken,
-    tasks: Vec<JoinHandle<()>>,
+    tasks: Vec<JoinHandle<()>>, // This can technically grow unbounded.
 }
 
 impl Default for TaskManager {

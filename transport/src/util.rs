@@ -24,7 +24,7 @@ pub async fn get_keypair(path: Option<PathBuf>) -> anyhow::Result<Keypair> {
         Err(_) => {
             log::info!("Generating new key and saving into {}", path.display());
             let keypair = ed25519::Keypair::generate();
-            tokio::fs::write(&path, keypair.to_bytes()).await?;
+            tokio::fs::write(&path, keypair.to_bytes()).await?; // `Keypair` has a function "to_protobuf_encoding" that uses a defined encoding to write the key. You could use that here instead of depending on the bytes representation of `ed25519`.
             Ok(keypair.into())
         }
     }
@@ -35,7 +35,7 @@ pub fn addr_is_reachable(addr: &Multiaddr) -> bool {
         Some(Protocol::Ip4(addr)) => {
             !(addr.is_loopback() || addr.is_link_local())
             // We need to allow private addresses for testing in local environment
-            &&(!addr.is_private() || std::env::var("PRIVATE_NETWORK").is_ok())
+            &&(!addr.is_private() || std::env::var("PRIVATE_NETWORK").is_ok()) // Side-effects like these are best passed as parameters.
         }
         Some(Protocol::Ip6(addr)) => !addr.is_loopback(),
         Some(Protocol::Dns(_)) => true,

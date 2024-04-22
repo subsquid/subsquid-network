@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
         kademlia: kad::Behaviour::with_config(
             local_peer_id,
             MemoryStore::new(local_peer_id),
-            Default::default(),
+            Default::default(), // Same here, this is the default IPFS network.
         ),
         relay: relay::Behaviour::new(local_peer_id, Default::default()),
         gossipsub: gossipsub::Behaviour::new(
@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
         swarm.add_external_address(public_addr);
     }
 
-    swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server));
+    swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server)); // This is unnecessary if you are setting an external address.
 
     // Connect to other boot nodes
     for BootNode { peer_id, address } in
@@ -111,15 +111,23 @@ async fn main() -> anyhow::Result<()> {
     {
         log::info!("Connecting to boot node {peer_id} at {address}");
         swarm.behaviour_mut().kademlia.add_address(&peer_id, address.clone());
+
+        // By default, the `Swarm` will consult all behaviours for addresses for a peer.
+        // If you specify `.addresses` here, it won't.
+        // Unless you want to be specific about _just_ using that one address, I'd leave it off and just specify the peer ID.
         swarm.dial(DialOpts::peer_id(peer_id).addresses(vec![address]).build())?;
     }
 
+    // As mentioned elsewhere, bootstrap is now included automatically.
     if swarm.behaviour_mut().kademlia.bootstrap().is_err() {
         log::warn!("No peers connected. Cannot bootstrap kademlia.")
     }
 
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigterm = signal(SignalKind::terminate())?;
+
+    // Have you looked at the implementation? :)
+    // This statically returns `false` so you can also just use a `loop`!
     while !swarm.is_terminated() {
         let event = tokio::select! {
             event = swarm.select_next_some() => event,
