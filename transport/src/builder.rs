@@ -5,7 +5,7 @@ use libp2p::{
     multiaddr::Protocol,
     noise,
     swarm::{dial_opts::DialOpts, NetworkBehaviour},
-    yamux, Swarm, SwarmBuilder,
+    yamux, StreamProtocol, Swarm, SwarmBuilder,
 };
 
 use crate::{
@@ -36,6 +36,7 @@ use crate::actors::scheduler::{
 use crate::actors::worker::{
     self, WorkerBehaviour, WorkerConfig, WorkerEvent, WorkerTransportHandle,
 };
+use crate::protocol::dht_protocol;
 
 pub struct P2PTransportBuilder {
     keypair: Keypair,
@@ -46,36 +47,15 @@ pub struct P2PTransportBuilder {
     relay: bool,
     quic_config: QuicConfig,
     base_config: BaseConfig,
+    contract_client: Box<dyn contract_client::Client>,
+    dht_protocol: StreamProtocol,
 }
-
-impl Default for P2PTransportBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl P2PTransportBuilder {
-    pub fn new() -> Self {
-        let keypair = Keypair::generate_ed25519();
-        Self::from_keypair(keypair)
-    }
-
-    pub fn from_keypair(keypair: Keypair) -> Self {
-        Self {
-            keypair,
-            listen_addrs: vec![],
-            public_addrs: vec![],
-            boot_nodes: vec![],
-            relay_addrs: vec![],
-            relay: false,
-            quic_config: QuicConfig::from_env(),
-            base_config: Default::default(),
-        }
-    }
-
     pub async fn from_cli(args: TransportArgs) -> anyhow::Result<Self> {
         let listen_addrs = args.listen_addrs();
         let keypair = get_keypair(args.key).await?;
+        let contract_client = contract_client::get_client(&args.rpc).await?;
+        let dht_protocol = dht_protocol(args.rpc.network);
         Ok(Self {
             keypair,
             listen_addrs,
@@ -85,6 +65,8 @@ impl P2PTransportBuilder {
             relay: false,
             quic_config: QuicConfig::from_env(),
             base_config: Default::default(),
+            contract_client,
+            dht_protocol,
         })
     }
 
@@ -127,6 +109,10 @@ impl P2PTransportBuilder {
         self.keypair.clone()
     }
 
+    pub fn contract_client(&self) -> Box<dyn contract_client::Client> {
+        self.contract_client.clone_client()
+    }
+
     fn build_swarm<T: NetworkBehaviour>(
         mut self,
         behaviour: impl FnOnce(BaseBehaviour) -> T,
@@ -134,7 +120,7 @@ impl P2PTransportBuilder {
         let mut swarm = SwarmBuilder::with_existing_identity(self.keypair)
             .with_tokio()
             .with_quic_config(|config| {
-                let mut config = config.with_mtu_upper_bound(self.quic_config.mtu_discovery_max);
+                let mut config = config.mtu_upper_bound(self.quic_config.mtu_discovery_max);
                 config.keep_alive_interval =
                     Duration::from_millis(self.quic_config.keep_alive_interval_ms as u64);
                 config.max_idle_timeout = self.quic_config.max_idle_timeout_ms;
@@ -143,8 +129,14 @@ impl P2PTransportBuilder {
             .with_dns()?
             .with_relay_client(noise::Config::new, yamux::Config::default)?
             .with_behaviour(|keypair, relay| {
-                let base =
-                    BaseBehaviour::new(keypair, self.base_config, self.boot_nodes.clone(), relay);
+                let base = BaseBehaviour::new(
+                    keypair,
+                    self.contract_client,
+                    self.base_config,
+                    self.boot_nodes.clone(),
+                    relay,
+                    self.dht_protocol,
+                );
                 behaviour(base)
             })
             .expect("infallible")

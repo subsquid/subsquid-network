@@ -1,8 +1,8 @@
 [workspace]
-members = ["messages", "transport"]
+members = ["contract-client", "messages", "transport"]
 resolver = "2"
 
 [workspace.dependencies]
-libp2p = { git = "https://github.com/Wiezzel/rust-libp2p.git", rev = "ea39732a" }
-libp2p-connection-limits = { git = "https://github.com/Wiezzel/rust-libp2p.git", rev = "ea39732a" }
-libp2p-swarm-derive = { git = "https://github.com/Wiezzel/rust-libp2p.git", rev = "ea39732a" }
+libp2p = { git = "https://github.com/Wiezzel/rust-libp2p.git", rev = "d03dec17" }
+libp2p-connection-limits = { git = "https://github.com/Wiezzel/rust-libp2p.git", rev = "d03dec17" }
+libp2p-swarm-derive = { git = "https://github.com/Wiezzel/rust-libp2p.git", rev = "d03dec17" }

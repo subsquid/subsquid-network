@@ -1,16 +1,17 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     task::{Context, Poll},
     time::Duration,
     vec,
 };
 
 use bimap::BiHashMap;
+use contract_client::NodeStream;
+use futures::StreamExt;
 use futures_bounded::FuturesMap;
-use libp2p::swarm::DialFailure;
 use libp2p::{
     allow_block_list,
-    allow_block_list::BlockedPeers,
+    allow_block_list::AllowedPeers,
     autonat,
     autonat::NatStatus,
     core::ConnectedPoint,
@@ -25,7 +26,7 @@ use libp2p::{
     swarm::{
         behaviour::ConnectionEstablished,
         dial_opts::{DialOpts, PeerCondition},
-        ConnectionClosed, FromSwarm, NetworkBehaviour, ToSwarm,
+        ConnectionClosed, DialFailure, FromSwarm, NetworkBehaviour, ToSwarm,
     },
     StreamProtocol,
 };
@@ -43,7 +44,7 @@ use crate::{
         wrapped::{BehaviourWrapper, TToSwarm, Wrapped},
     },
     cli::BootNode,
-    protocol::{DHT_PROTOCOL, ID_PROTOCOL, LOGS_TOPIC, PING_TOPIC},
+    protocol::{ID_PROTOCOL, LOGS_TOPIC, PING_TOPIC},
     record_event,
     util::addr_is_reachable,
     PeerId, QueueFull,
@@ -60,12 +61,13 @@ pub struct InnerBehaviour {
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
     autonat: autonat::Behaviour,
-    block: allow_block_list::Behaviour<BlockedPeers>,
+    allow: allow_block_list::Behaviour<AllowedPeers>,
     pubsub: Wrapped<PubsubBehaviour>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BaseConfig {
+    pub nodes_update_interval: Duration,
     pub autonat_timeout: Duration,
     pub identify_interval: Duration,
     pub request_timeout: Duration,
@@ -76,6 +78,7 @@ pub struct BaseConfig {
 impl Default for BaseConfig {
     fn default() -> Self {
         Self {
+            nodes_update_interval: Duration::from_secs(300),
             autonat_timeout: Duration::from_secs(60),
             identify_interval: Duration::from_secs(60),
             request_timeout: Duration::from_secs(60),
@@ -91,18 +94,22 @@ pub struct BaseBehaviour {
     ongoing_queries: BiHashMap<PeerId, QueryId>,
     outbound_conns: HashMap<PeerId, u32>,
     probe_timeouts: FuturesMap<PeerId, ()>,
+    registered_nodes: HashSet<PeerId>,
+    active_nodes_stream: NodeStream,
 }
 
 #[allow(dead_code)]
 impl BaseBehaviour {
     pub fn new(
         keypair: &Keypair,
+        contract_client: Box<dyn contract_client::Client>,
         config: BaseConfig,
         boot_nodes: Vec<BootNode>,
         relay: relay::client::Behaviour,
+        dht_protocol: StreamProtocol,
     ) -> Self {
         let local_peer_id = keypair.public().to_peer_id();
-        let mut kad_config = kad::Config::new(DHT_PROTOCOL);
+        let mut kad_config = kad::Config::new(dht_protocol);
         kad_config.set_replication_factor(20.try_into().unwrap());
         let mut inner = InnerBehaviour {
             identify: identify::Behaviour::new(
@@ -125,11 +132,12 @@ impl BaseBehaviour {
                     ..Default::default()
                 },
             ),
-            block: Default::default(),
+            allow: Default::default(),
             pubsub: PubsubBehaviour::new(keypair.clone()).into(),
         };
 
         for boot_node in boot_nodes {
+            inner.allow.allow_peer(boot_node.peer_id);
             inner.kademlia.add_address(&boot_node.peer_id, boot_node.address.clone());
             inner.autonat.add_server(boot_node.peer_id, Some(boot_node.address));
         }
@@ -140,6 +148,8 @@ impl BaseBehaviour {
             ongoing_queries: Default::default(),
             outbound_conns: Default::default(),
             probe_timeouts: FuturesMap::new(config.probe_timeout, config.max_concurrent_probes),
+            registered_nodes: Default::default(),
+            active_nodes_stream: contract_client.network_nodes_stream(config.nodes_update_interval),
         }
     }
 
@@ -199,9 +209,35 @@ impl BaseBehaviour {
         Ok(false)
     }
 
-    pub fn block_peer(&mut self, peer_id: PeerId) {
-        log::info!("Blocking peer {peer_id}");
-        self.inner.block.block_peer(peer_id);
+    pub fn allow_peer(&mut self, peer_id: PeerId) {
+        log::info!("Allowing peer {peer_id}");
+        self.inner.allow.allow_peer(peer_id);
+    }
+
+    fn on_nodes_update(&mut self, result: Result<HashSet<PeerId>, contract_client::ClientError>) {
+        let nodes = match result {
+            Err(e) => {
+                log::error!("Error retrieving registered nodes from chain: {e:?}");
+                return;
+            }
+            Ok(nodes) if nodes == self.registered_nodes => {
+                log::debug!("Registered nodes set unchanged.");
+                return;
+            }
+            Ok(nodes) => nodes,
+        };
+        log::info!("Updating registered nodes");
+        // Disallow nodes which are no longer registered
+        for peer_id in self.registered_nodes.difference(&nodes) {
+            log::info!("Blocking peer {peer_id}");
+            self.inner.allow.disallow_peer(*peer_id);
+        }
+        // Allow newly registered nodes
+        for peer_id in nodes.difference(&self.registered_nodes) {
+            log::info!("Allowing peer {peer_id}");
+            self.inner.allow.allow_peer(*peer_id);
+        }
+        self.registered_nodes = nodes;
     }
 }
 
@@ -266,18 +302,33 @@ impl BehaviourWrapper for BaseBehaviour {
     }
 
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<impl IntoIterator<Item = TToSwarm<Self>>> {
-        match self.probe_timeouts.poll_unpin(cx) {
-            Poll::Ready((peer_id, Err(_))) => {
-                #[cfg(feature = "metrics")]
-                ONGOING_PROBES.dec();
-                log::debug!("Probe for peer {peer_id} timed out");
-                Poll::Ready(Some(ToSwarm::GenerateEvent(BaseBehaviourEvent::PeerProbed {
-                    peer_id,
-                    reachable: false,
-                })))
+        loop {
+            match self.active_nodes_stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(res)) => {
+                    self.on_nodes_update(res);
+                    continue;
+                }
+                Poll::Pending => {}
+                _ => unreachable!(), // infinite stream
             }
-            Poll::Pending => Poll::Pending,
-            _ => unreachable!(), // future::pending() should never complete
+
+            match self.probe_timeouts.poll_unpin(cx) {
+                Poll::Ready((peer_id, Err(_))) => {
+                    #[cfg(feature = "metrics")]
+                    ONGOING_PROBES.dec();
+                    log::debug!("Probe for peer {peer_id} timed out");
+                    return Poll::Ready(Some(ToSwarm::GenerateEvent(
+                        BaseBehaviourEvent::PeerProbed {
+                            peer_id,
+                            reachable: false,
+                        },
+                    )));
+                }
+                Poll::Pending => {}
+                _ => unreachable!(), // future::pending() should never complete
+            }
+
+            return Poll::Pending;
         }
     }
 }

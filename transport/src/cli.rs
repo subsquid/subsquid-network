@@ -1,5 +1,6 @@
 use crate::PeerId;
 use clap::Args;
+use contract_client::RpcArgs;
 use libp2p::Multiaddr;
 use std::{path::PathBuf, str::FromStr};
 
@@ -35,6 +36,9 @@ pub struct TransportArgs {
         num_args = 1..,
     )]
     pub boot_nodes: Vec<BootNode>,
+
+    #[command(flatten)]
+    pub rpc: RpcArgs,
 }
 
 impl TransportArgs {

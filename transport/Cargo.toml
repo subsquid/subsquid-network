@@ -1,6 +1,6 @@
 [package]
 name = "subsquid-network-transport"
-version = "0.4.6"
+version = "1.0.0-rc1"
 edition = "2021"
 
 [[bin]]
@@ -33,6 +33,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["fs", "macros", "rt", "rt-multi-thread", "signal", "sync"] }
 tokio-util = "0.7"
 
+contract-client = { path = "../contract-client" }
 subsquid-messages = { path = "../messages", features = ["signatures", "semver"] }
 
 [features]

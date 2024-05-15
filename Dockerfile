@@ -5,6 +5,7 @@ FROM --platform=$BUILDPLATFORM chef AS planner
 
 COPY Cargo.toml .
 COPY Cargo.lock .
+COPY contract-client ./contract-client
 COPY messages ./messages
 COPY transport ./transport
 
@@ -17,6 +18,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY Cargo.toml .
 COPY Cargo.lock .
+COPY contract-client ./contract-client
 COPY transport ./transport
 
 FROM builder as builder

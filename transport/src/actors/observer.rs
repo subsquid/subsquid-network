@@ -52,6 +52,7 @@ impl ObserverBehaviour {
     pub fn new(mut base: BaseBehaviour, logs_collector_id: PeerId) -> Wrapped<Self> {
         base.subscribe_pings();
         base.subscribe_logs();
+        base.allow_peer(logs_collector_id);
         Self {
             base: base.into(),
             logs_collector_id,

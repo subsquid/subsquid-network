@@ -108,6 +108,8 @@ impl WorkerBehaviour {
     ) -> Wrapped<Self> {
         base.subscribe_pings();
         base.subscribe_logs();
+        base.allow_peer(config.logs_collector_id);
+        base.allow_peer(config.scheduler_id);
         Self {
             inner: InnerBehaviour {
                 base: base.into(),
@@ -154,7 +156,6 @@ impl WorkerBehaviour {
     ) -> Option<WorkerEvent> {
         if peer_id != self.logs_collector_id {
             log::warn!("Peer {peer_id} impersonating logs collector");
-            self.inner.base.block_peer(peer_id);
             return None;
         }
         log::debug!("Received logs collected message");
@@ -199,7 +200,6 @@ impl WorkerBehaviour {
     ) -> Option<WorkerEvent> {
         if peer_id != self.scheduler_id {
             log::warn!("Peer {peer_id} impersonating scheduler");
-            self.inner.base.block_peer(peer_id);
             return None;
         }
         log::debug!("Received pong from scheduler: {request:?}");

@@ -1,7 +1,9 @@
-use std::fmt::Debug;
-use std::future::Future;
-use std::pin::{pin, Pin};
-use std::task::{Context, Poll};
+use std::{
+    fmt::Debug,
+    future::Future,
+    pin::{pin, Pin},
+    task::{Context, Poll},
+};
 
 use futures_core::Stream;
 use tokio::sync::mpsc;

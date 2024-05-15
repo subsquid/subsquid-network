@@ -1,0 +1,72 @@
+[
+  {
+    "inputs":[
+      {
+        "internalType":"contract IRouter",
+        "name":"_router",
+        "type":"address"
+      },
+      {
+        "internalType":"contract IGatewayRegistry",
+        "name":"_gatewayRegistry",
+        "type":"address"
+      }
+    ],
+    "stateMutability":"nonpayable",
+    "type":"constructor"
+  },
+  {
+    "inputs":[
+      {
+        "internalType":"bytes",
+        "name":"gatewayId",
+        "type":"bytes"
+      },
+      {
+        "internalType":"uint256",
+        "name":"",
+        "type":"uint256"
+      }
+    ],
+    "name":"computationUnitsPerEpoch",
+    "outputs":[
+      {
+        "internalType":"uint256",
+        "name":"",
+        "type":"uint256"
+      }
+    ],
+    "stateMutability":"view",
+    "type":"function"
+  },
+  {
+    "inputs":[
+
+    ],
+    "name":"gatewayRegistry",
+    "outputs":[
+      {
+        "internalType":"contract IGatewayRegistry",
+        "name":"",
+        "type":"address"
+      }
+    ],
+    "stateMutability":"view",
+    "type":"function"
+  },
+  {
+    "inputs":[
+
+    ],
+    "name":"router",
+    "outputs":[
+      {
+        "internalType":"contract IRouter",
+        "name":"",
+        "type":"address"
+      }
+    ],
+    "stateMutability":"view",
+    "type":"function"
+  }
+]

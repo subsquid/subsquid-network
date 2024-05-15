@@ -91,6 +91,7 @@ pub struct GatewayBehaviour {
 impl GatewayBehaviour {
     pub fn new(mut base: BaseBehaviour, config: GatewayConfig) -> Wrapped<Self> {
         base.subscribe_pings();
+        base.allow_peer(config.logs_collector_id);
         let inner = InnerBehaviour {
             base: base.into(),
             query: ClientBehaviour::new(
