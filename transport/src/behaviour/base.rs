@@ -452,7 +452,7 @@ impl BaseBehaviour {
             #[cfg(feature = "metrics")]
             ONGOING_QUERIES.dec();
             return Some(ToSwarm::Dial {
-                opts: DialOpts::peer_id(peer_id).condition(PeerCondition::NotDialing).build(),
+                opts: DialOpts::peer_id(peer_id).condition(PeerCondition::NotDialing).build(), // Usually, the default of `DisconnectedAndNotDialing` is good enough unless you want to explicitly allow duplicated connections in case you already have one.
             });
         }
         None

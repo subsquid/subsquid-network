@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
         .with_dns()?
         .with_behaviour(behaviour)
         .expect("infallible")
-        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
+        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120))) // Suprisingly long but in itself not harmful esp. with the use of QUIC which reuses a single socket.
         .build();
     for listen_addr in listen_addrs {
         log::info!("Listening on {}", listen_addr);
@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
         swarm.add_external_address(public_addr);
     }
 
-    swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server));
+    swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server)); // Redundant if you are setting an external address.
 
     // Connect to other boot nodes
     for BootNode { peer_id, address } in cli
@@ -129,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
     {
         log::info!("Connecting to boot node {peer_id} at {address}");
         swarm.behaviour_mut().allow.allow_peer(peer_id);
-        swarm.behaviour_mut().kademlia.add_address(&peer_id, address.clone());
+        swarm.behaviour_mut().kademlia.add_address(&peer_id, address.clone()); // This is redundant if you are dialing the peer. We will automatically add every peer to the KAD table if we successfully dialed them and they speak the same KAD protocol.
         swarm.dial(peer_id)?;
     }
 

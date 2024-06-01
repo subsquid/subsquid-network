@@ -130,9 +130,7 @@ where
 
     fn on_swarm_event(&mut self, event: FromSwarm) {
         self.inner().on_swarm_event(event);
-        for ev in self.wrapper.on_swarm_event(event) {
-            self.pending_events.push_back(ev)
-        }
+        self.pending_events.extend(self.wrapper.on_swarm_event(event));
     }
 
     fn on_connection_handler_event(
