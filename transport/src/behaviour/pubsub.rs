@@ -1,8 +1,3 @@
-use std::{
-    collections::HashMap,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-
 use derivative::Derivative;
 use libp2p::{
     gossipsub::{
@@ -11,10 +6,15 @@ use libp2p::{
     identity::Keypair,
     swarm::{NetworkBehaviour, ToSwarm},
 };
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tokio::time::Instant;
 
 use crate::{
     behaviour::wrapped::{BehaviourWrapper, TToSwarm},
+    metrics::DISCARDED_MESSAGES,
     record_event, PeerId,
 };
 
@@ -23,20 +23,101 @@ const SUBSCRIPTION_TIMEOUT: Duration = Duration::from_secs(60);
 struct TopicState {
     name: &'static str,
     topic: Sha256Topic,
-    sequence_numbers: HashMap<PeerId, u64>, // FIXME: Potential memory leak
-    keep_last: u64,
+    peer_states: HashMap<PeerId, PeerState>,
+    validation_config: MsgValidationConfig,
     subscribed_at: Instant,
 }
 
+pub struct MsgValidationConfig {
+    /// Minimum interval between messages from the same origin
+    pub min_interval: Duration,
+    /// Maximum messages per min_interval
+    pub max_burst: u32,
+    /// How far back from the latest seq_no is accepted
+    pub keep_last: u64,
+}
+
+impl MsgValidationConfig {
+    pub fn new(min_interval: Duration) -> Self {
+        Self {
+            min_interval,
+            max_burst: 1,
+            keep_last: 1,
+        }
+    }
+
+    pub fn max_burst(mut self, max_burst: u32) -> Self {
+        self.max_burst = max_burst;
+        self
+    }
+
+    pub fn keep_last(mut self, keep_last: u64) -> Self {
+        self.keep_last = keep_last;
+        self
+    }
+}
+
+struct PeerState {
+    last_seq_no: u64,
+    last_time: Instant,
+    burst: u32,
+}
+
+impl PeerState {
+    pub fn new(seq_no: u64) -> Self {
+        Self {
+            last_seq_no: seq_no,
+            last_time: Instant::now(),
+            burst: 1,
+        }
+    }
+
+    pub fn validate_msg(
+        &mut self,
+        seq_no: u64,
+        config: &MsgValidationConfig,
+    ) -> Result<(), &'static str> {
+        // Sequence numbers should be timestamp-based, can't be from the future
+        if seq_no == 0 || seq_no > timestamp_now() {
+            return Err("invalid sequence number");
+        }
+        if seq_no + config.keep_last <= self.last_seq_no {
+            return Err("old message");
+        }
+
+        if self.last_time.elapsed() < config.min_interval {
+            self.burst += 1;
+        } else {
+            self.last_time = Instant::now();
+            self.burst = 1;
+        }
+        if self.burst > config.max_burst {
+            return Err("too many messages within min_interval");
+        }
+
+        Ok(())
+    }
+}
+
 impl TopicState {
-    pub fn new(name: &'static str, keep_last: u64) -> Self {
+    pub fn new(name: &'static str, validation_config: MsgValidationConfig) -> Self {
         Self {
             name,
             topic: Sha256Topic::new(name),
-            sequence_numbers: Default::default(),
-            keep_last,
+            peer_states: Default::default(),
+            validation_config,
             subscribed_at: Instant::now(),
         }
+    }
+
+    pub fn validate_msg(&mut self, peer_id: PeerId, seq_no: u64) -> Result<(), &'static str> {
+        match self.peer_states.get_mut(&peer_id) {
+            None => {
+                self.peer_states.insert(peer_id, PeerState::new(seq_no));
+            }
+            Some(state) => state.validate_msg(seq_no, &self.validation_config)?,
+        }
+        Ok(())
     }
 }
 
@@ -71,9 +152,9 @@ impl PubsubBehaviour {
         }
     }
 
-    pub fn subscribe(&mut self, topic_name: &'static str, keep_last: u64) {
+    pub fn subscribe(&mut self, topic_name: &'static str, validation_config: MsgValidationConfig) {
         log::info!("Subscribing to topic {topic_name}");
-        let topic = TopicState::new(topic_name, keep_last);
+        let topic = TopicState::new(topic_name, validation_config);
         let topic_hash = topic.topic.hash();
         if self.topics.contains_key(&topic_hash) {
             log::warn!("Topic {topic_name} already subscribed");
@@ -116,20 +197,13 @@ impl PubsubBehaviour {
         let Some(peer_id) = msg.source else {
             return Err("anonymous message");
         };
+        let Some(seq_no) = msg.sequence_number else {
+            return Err("message without sequence number");
+        };
         let Some(topic_state) = self.topics.get_mut(&msg.topic) else {
             return Err("message with unknown topic");
         };
-        let last_seq_no = topic_state.sequence_numbers.entry(peer_id).or_default();
-        match msg.sequence_number {
-            None => return Err("message without sequence number"),
-            // Sequence numbers should be timestamp-based, can't be from the future
-            Some(seq_no) if seq_no > timestamp_now() => return Err("invalid sequence number"),
-            Some(seq_no) if seq_no + topic_state.keep_last <= *last_seq_no => {
-                return Err("old message")
-            }
-            Some(seq_no) if seq_no > *last_seq_no => *last_seq_no = seq_no,
-            _ => {}
-        };
+        topic_state.validate_msg(peer_id, seq_no)?;
 
         Ok(PubsubMsg {
             peer_id,
@@ -173,6 +247,7 @@ impl BehaviourWrapper for PubsubBehaviour {
             }
             Err(e) => {
                 log::debug!("Discarding gossipsub message from {propagation_source}: {e}");
+                DISCARDED_MESSAGES.inc();
                 let _ = self.inner.report_message_validation_result(
                     &message_id,
                     &propagation_source,

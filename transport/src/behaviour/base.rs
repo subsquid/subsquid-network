@@ -37,6 +37,9 @@ use subsquid_messages::{
     WorkerLogsMsg,
 };
 
+use crate::behaviour::pubsub::MsgValidationConfig;
+#[cfg(feature = "metrics")]
+use crate::metrics::{ACTIVE_CONNECTIONS, ONGOING_PROBES, ONGOING_QUERIES};
 use crate::{
     behaviour::{
         addr_cache::AddressCache,
@@ -52,9 +55,6 @@ use crate::{
     util::addr_is_reachable,
     PeerId, QueueFull,
 };
-
-#[cfg(feature = "metrics")]
-use crate::metrics::{ACTIVE_CONNECTIONS, ONGOING_PROBES, ONGOING_QUERIES};
 
 #[derive(NetworkBehaviour)]
 pub struct InnerBehaviour {
@@ -164,17 +164,22 @@ impl BaseBehaviour {
     }
 
     pub fn subscribe_pings(&mut self) {
-        self.inner.pubsub.subscribe(PING_TOPIC, 1);
+        let config = MsgValidationConfig::new(Duration::from_secs(10)).max_burst(2);
+        self.inner.pubsub.subscribe(PING_TOPIC, config);
     }
 
     pub fn subscribe_worker_logs(&mut self) {
         // Unordered messages need to be allowed, because we're interested in all messages from
         // each worker, not only the most recent one (as in the case of pings).
-        self.inner.pubsub.subscribe(WORKER_LOGS_TOPIC, KEEP_LAST_WORKER_LOGS);
+        let config = MsgValidationConfig::new(Duration::from_secs(60))
+            .max_burst(10)
+            .keep_last(KEEP_LAST_WORKER_LOGS);
+        self.inner.pubsub.subscribe(WORKER_LOGS_TOPIC, config);
     }
 
     pub fn subscribe_logs_collected(&mut self) {
-        self.inner.pubsub.subscribe(LOGS_COLLECTED_TOPIC, 1);
+        let config = MsgValidationConfig::new(Duration::from_secs(60));
+        self.inner.pubsub.subscribe(LOGS_COLLECTED_TOPIC, config);
     }
 
     pub fn sign<T: SignedMessage>(&self, msg: &mut T) {

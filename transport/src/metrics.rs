@@ -16,6 +16,7 @@ lazy_static! {
         Default::default();
     pub static ref DROPPED: Family<Vec<(&'static str, &'static str)>, Counter<u64, AtomicU64>> =
         Default::default();
+    pub static ref DISCARDED_MESSAGES: Counter = Default::default();
 }
 
 pub static LIBP2P_METRICS: OnceCell<Metrics> = OnceCell::const_new();
@@ -44,6 +45,11 @@ pub fn register_metrics(registry: &mut Registry) {
         "queue_size",
         "The number of messages/events waiting to be processed",
         QUEUE_SIZE.clone(),
+    );
+    registry.register(
+        "discarded_messages",
+        "Gossipsub messages discarded because they were deprecated",
+        DISCARDED_MESSAGES.clone(),
     );
     registry.register("dropped", "The number of dropped messages/events", DROPPED.clone())
 }
