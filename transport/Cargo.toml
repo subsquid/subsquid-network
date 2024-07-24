@@ -1,7 +1,7 @@
 [package]
 name = "subsquid-network-transport"
 license = "AGPL-3.0-or-later"
-version = "1.0.5"
+version = "1.0.6"
 edition = "2021"
 
 [[bin]]
@@ -46,6 +46,7 @@ request-server = []
 gateway = ["actors", "request-client", "proto"]
 logs-collector = ["actors", "request-server", "proto"]
 observer = ["actors"]
+pings-collector = ["actors"]
 scheduler = ["actors", "request-client", "proto"]
 worker = ["actors", "request-server", "proto"]
 metrics = ["libp2p/metrics", "prometheus-client"]

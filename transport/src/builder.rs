@@ -28,6 +28,10 @@ use crate::actors::logs_collector::{
 use crate::actors::observer::{
     self, ObserverBehaviour, ObserverConfig, ObserverEvent, ObserverTransportHandle,
 };
+#[cfg(feature = "pings-collector")]
+use crate::actors::pings_collector::{
+    self, Ping, PingsCollectorBehaviour, PingsCollectorConfig, PingsCollectorTransportHandle,
+};
 #[cfg(feature = "scheduler")]
 use crate::actors::scheduler::{
     self, SchedulerBehaviour, SchedulerConfig, SchedulerEvent, SchedulerTransportHandle,
@@ -204,6 +208,15 @@ impl P2PTransportBuilder {
         let swarm =
             self.build_swarm(|base| ObserverBehaviour::new(base, config.logs_collector_id))?;
         Ok(observer::start_transport(swarm, config))
+    }
+
+    #[cfg(feature = "pings-collector")]
+    pub fn build_pings_collector(
+        self,
+        config: PingsCollectorConfig,
+    ) -> Result<(impl Stream<Item = Ping>, PingsCollectorTransportHandle), Error> {
+        let swarm = self.build_swarm(|base| PingsCollectorBehaviour::new(base))?;
+        Ok(pings_collector::start_transport(swarm, config))
     }
 
     #[cfg(feature = "scheduler")]

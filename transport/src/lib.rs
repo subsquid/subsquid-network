@@ -55,6 +55,10 @@ pub use crate::actors::logs_collector::{
 pub use crate::actors::observer::{
     ObserverBehaviour, ObserverConfig, ObserverEvent, ObserverTransportHandle,
 };
+#[cfg(feature = "pings-collector")]
+pub use crate::actors::pings_collector::{
+    Ping, PingsCollectorBehaviour, PingsCollectorConfig, PingsCollectorTransportHandle,
+};
 #[cfg(feature = "scheduler")]
 pub use crate::actors::scheduler::{
     SchedulerBehaviour, SchedulerConfig, SchedulerEvent, SchedulerTransportHandle,

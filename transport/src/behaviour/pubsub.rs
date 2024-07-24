@@ -15,9 +15,11 @@ use tokio::time::Instant;
 
 use crate::{
     behaviour::wrapped::{BehaviourWrapper, TToSwarm},
-    metrics::DISCARDED_MESSAGES,
     record_event, PeerId,
 };
+
+#[cfg(feature = "metrics")]
+use crate::metrics::DISCARDED_MESSAGES;
 
 const SUBSCRIPTION_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -249,6 +251,7 @@ impl BehaviourWrapper for PubsubBehaviour {
             }
             Err(e) => {
                 log::debug!("Discarding gossipsub message from {propagation_source}: {e}");
+                #[cfg(feature = "metrics")]
                 DISCARDED_MESSAGES.inc();
                 let _ = self.inner.report_message_validation_result(
                     &message_id,

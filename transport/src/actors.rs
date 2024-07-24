@@ -4,6 +4,8 @@ pub mod gateway;
 pub mod logs_collector;
 #[cfg(feature = "observer")]
 pub mod observer;
+#[cfg(feature = "pings-collector")]
+pub mod pings_collector;
 #[cfg(feature = "scheduler")]
 pub mod scheduler;
 #[cfg(feature = "worker")]
