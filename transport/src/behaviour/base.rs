@@ -260,7 +260,7 @@ impl BaseBehaviour {
         for log in &mut logs {
             self.sign(log);
         }
-        for bundle in bundle_messages(logs, self.max_pubsub_msg_size) {
+        for bundle in bundle_messages(logs, self.max_pubsub_msg_size / 2) {
             let msg: WorkerLogsMsg = bundle.into();
             self.inner.pubsub.publish(WORKER_LOGS_TOPIC, msg.encode_to_vec());
         }
