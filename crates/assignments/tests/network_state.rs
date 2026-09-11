@@ -25,7 +25,8 @@ const SPLIT_ONLY_STATE: &str = r#"{
   "portal_assignment": {
     "fb_url": "https://example.test/portal.fb.1.gz",
     "id": "portal",
-    "version": "1"
+    "version": "1",
+    "effective_from": 1781000000
   },
   "schema_bundle": {
     "hash": "a1b2c3",
@@ -110,6 +111,7 @@ fn split_network_state_deserializes() {
             id: "worker".to_owned(),
             fb_url: "https://example.test/worker.fb.1.gz".to_owned(),
             version: "1".to_owned(),
+            effective_from: None,
         }
     );
     assert_eq!(state.portal_assignment.as_ref().unwrap().id, "portal");
@@ -130,6 +132,7 @@ fn split_only_network_state_deserializes() {
     assert!(state.assignment.is_none(), "a migrated network publishes no legacy assignment");
     assert_eq!(state.worker_assignment.unwrap().id, "worker");
     assert_eq!(state.portal_assignment.as_ref().unwrap().id, "portal");
+    assert_eq!(state.portal_assignment.as_ref().unwrap().effective_from, Some(1781000000));
     assert!(state.schema_bundle.is_some());
 }
 

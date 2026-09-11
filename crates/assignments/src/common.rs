@@ -31,6 +31,8 @@ pub struct NetworkAssignmentV2 {
     pub fb_url: String,
     /// Format of the blob at `fb_url`, not of this struct. Free-form until the format settles.
     pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_from: Option<u64>,
 }
 
 /// Where to fetch the schema content that assignments only reference by id — a worker chunk's
