@@ -831,8 +831,8 @@ impl<Rng: CryptoRngCore> Drop for WorkerDatasetBuilder<'_, Rng> {
     }
 }
 
-/// A searched run column is only sound if it starts at chunk 0 and ascends; otherwise the reader's
-/// "last run at or before this chunk" has nothing to land on.
+/// Top runs must start at chunk 0 and strictly ascend by `first_chunk_index` so the reader can
+/// find the last run at or before a chunk. Top directory values may decrease or recur.
 fn check_top_runs(runs: &[assignment_fb::TopRun]) -> anyhow::Result<()> {
     let Some(first) = runs.first() else {
         anyhow::bail!("a dataset with chunks must have at least one top run");
@@ -843,7 +843,6 @@ fn check_top_runs(runs: &[assignment_fb::TopRun]) -> anyhow::Result<()> {
             pair[0].first_chunk_index() < pair[1].first_chunk_index(),
             "top runs must strictly ascend by first_chunk_index"
         );
-        anyhow::ensure!(pair[0].top() < pair[1].top(), "numeric tops must strictly ascend");
     }
     Ok(())
 }
@@ -1110,7 +1109,7 @@ struct PortalDatasetColumns {
     block_deltas: Vec<u32>,
     hashes: Vec<assignment_fb::ChunkHash>,
     /// Appended only when a chunk's top differs from the previous one's, which is what makes the
-    /// runs start at 0 and strictly ascend.
+    /// runs start at 0 and strictly ascend by `first_chunk_index`, regardless of top values.
     tops: Vec<assignment_fb::TopRun>,
     /// Absolute epoch milliseconds, as given; 0 for a chunk that was staged without one, which is
     /// the only thing a column can say about a timestamp it never got.

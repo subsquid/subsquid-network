@@ -664,7 +664,7 @@ fn test_portal_tops_are_runs_and_hashes_keep_their_length() {
 
 #[cfg(feature = "builder")]
 #[test]
-fn test_worker_rejects_descending_numeric_tops() {
+fn test_worker_accepts_descending_numeric_tops() {
     let mut builder = test_builder();
     builder.register_write_schema(7, &["blocks"]).unwrap();
     let mut dataset = test_dataset(&mut builder);
@@ -682,13 +682,12 @@ fn test_worker_rejects_descending_numeric_tops() {
             .unwrap();
     }
 
-    let error = dataset.finish().unwrap_err();
-    assert_eq!(error.to_string(), "numeric tops must strictly ascend");
+    dataset.finish().unwrap();
 }
 
 #[cfg(feature = "builder")]
 #[test]
-fn test_portal_rejects_descending_numeric_tops() {
+fn test_portal_accepts_descending_numeric_tops() {
     use sqd_assignments::PortalAssignmentBuilder;
 
     let mut builder = PortalAssignmentBuilder::new();
@@ -700,8 +699,7 @@ fn test_portal_rejects_descending_numeric_tops() {
         dataset.new_chunk().id(id).block_range(range).finish().unwrap();
     }
 
-    let error = dataset.finish(None).unwrap_err();
-    assert_eq!(error.to_string(), "numeric tops must strictly ascend");
+    dataset.finish(None).unwrap();
 }
 
 /// The routing column is flattened and staged through a buffer the builder reuses, so a chunk
